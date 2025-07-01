@@ -42,6 +42,7 @@ class TaskBase(BaseModel):
     completada: bool = False
     usuario: Optional[str] = None
     project_id: str
+    fecha_limite: Optional[str] = None
 
 class TaskCreate(TaskBase):
     pass
@@ -94,32 +95,49 @@ def get_db():
     return db
 
 # Rutas para Proyectos
-@app.get("/api/projects", response_model=List[Project])
+@app.get("/api/projects")
 async def get_projects():
     """Obtener todos los proyectos"""
     try:
         db = get_db()
-        projects = list(db.projects.find())
+        projects_raw = list(db.projects.find())
         
-        print(f"🔍 Proyectos encontrados en DB: {len(projects)}")
+        print(f"🔍 Proyectos encontrados en DB: {len(projects_raw)}")
+        
+        # Crear una nueva lista con los datos procesados
+        projects = []
         
         # Calcular estadísticas para cada proyecto
-        for project in projects:
+        for project in projects_raw:
+            print(f"🔍 Proyecto raw: {project}")
             project_id = str(project["_id"])
             print(f"📋 Proyecto: {project.get('name', 'Sin nombre')} - ID: {project_id}")
             
             tasks = list(db.tasks.find({"project_id": project_id}))
             
-            project["total"] = len(tasks)
-            project["completadas"] = len([t for t in tasks if t.get("completada", False)])
-            project["pendientes"] = project["total"] - project["completadas"]
+            # Asegurar que todos los campos necesarios estén presentes
+            project_data = {
+                "_id": project_id,
+                "name": project.get("name", ""),
+                "description": project.get("description", ""),
+                "status": project.get("status", "Activo"),
+                "users": project.get("users", 0),
+                "created_at": project.get("created_at"),
+                "total": len(tasks),
+                "completadas": len([t for t in tasks if t.get("completada", False)]),
+                "pendientes": len(tasks) - len([t for t in tasks if t.get("completada", False)])
+            }
             
-            # Convertir ObjectId a string
-            project["_id"] = str(project["_id"])
+            print(f"   📊 Tareas: {project_data['total']} totales, {project_data['completadas']} completadas")
+            print(f"   🆔 ID incluido: {project_data['_id']}")
+            print(f"   🔍 project_data completo: {project_data}")
             
-            print(f"   📊 Tareas: {project['total']} totales, {project['completadas']} completadas")
+            projects.append(project_data)
         
         print(f"✅ Proyectos procesados: {[p.get('name', 'Sin nombre') for p in projects]}")
+        print(f"🔍 Datos que se envían al frontend:")
+        for i, p in enumerate(projects):
+            print(f"   Proyecto {i+1}: {p.get('name')} - ID: {p.get('_id')} - Keys: {list(p.keys())}")
         return projects
     except Exception as e:
         print(f"❌ Error en get_projects: {e}")
@@ -234,16 +252,21 @@ async def get_project_tasks(project_id: str):
 async def create_task(task: TaskCreate):
     """Crear una nueva tarea"""
     try:
+        print(f"🔍 Datos recibidos para crear tarea: {task.dict()}")
         db = get_db()
         task_data = task.dict()
         task_data["creada_en"] = datetime.utcnow()
+        
+        print(f"📝 Datos a insertar en DB: {task_data}")
         
         result = db.tasks.insert_one(task_data)
         task_data["id"] = str(result.inserted_id)
         task_data["_id"] = str(result.inserted_id)
         
+        print(f"✅ Tarea creada exitosamente con ID: {result.inserted_id}")
         return task_data
     except Exception as e:
+        print(f"❌ Error al crear tarea: {e}")
         raise HTTPException(status_code=500, detail=f"Error al crear tarea: {str(e)}")
 
 @app.put("/api/tasks/{task_id}", response_model=Task)
@@ -318,6 +341,15 @@ async def create_user(user: UserCreate):
 @app.get("/")
 async def root():
     return {"message": "API de Gestión de Proyectos funcionando correctamente"}
+
+@app.get("/test")
+async def test_endpoint():
+    """Endpoint de prueba para verificar que el backend está funcionando"""
+    return {
+        "status": "ok",
+        "message": "Backend funcionando correctamente",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.get("/health")
 async def health_check():
