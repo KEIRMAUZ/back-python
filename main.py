@@ -143,10 +143,11 @@ async def get_projects():
         print(f"❌ Error en get_projects: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener proyectos: {str(e)}")
 
-@app.get("/api/projects/{project_id}", response_model=Project)
+@app.get("/api/projects/{project_id}")
 async def get_project(project_id: str):
     """Obtener un proyecto específico"""
     try:
+        print(f"🔍 get_project - project_id recibido: {project_id}")
         db = get_db()
         
         # Validar que el project_id sea un ObjectId válido
@@ -162,6 +163,8 @@ async def get_project(project_id: str):
         if not project:
             raise HTTPException(status_code=404, detail="Proyecto no encontrado")
         
+        print(f"🔍 get_project - proyecto encontrado en DB: {project}")
+        
         # Calcular estadísticas
         tasks = list(db.tasks.find({"project_id": project_id}))
         project["total"] = len(tasks)
@@ -169,10 +172,14 @@ async def get_project(project_id: str):
         project["pendientes"] = project["total"] - project["completadas"]
         project["_id"] = str(project["_id"])
         
+        print(f"🔍 get_project - proyecto procesado: {project}")
+        print(f"🔍 get_project - project._id: {project['_id']}")
+        
         return project
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error en get_project: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener proyecto: {str(e)}")
 
 @app.post("/api/projects", response_model=Project)
@@ -308,18 +315,25 @@ async def delete_task(task_id: str):
         raise HTTPException(status_code=500, detail=f"Error al eliminar tarea: {str(e)}")
 
 # Rutas para Usuarios
-@app.get("/api/users", response_model=List[User])
+@app.get("/api/users")
 async def get_users():
     """Obtener todos los usuarios"""
     try:
+        print(f"🔍 get_users - Obteniendo usuarios de la base de datos")
         db = get_db()
         users = list(db.users.find())
         
-        for user in users:
-            user["_id"] = str(user["_id"])
+        print(f"🔍 get_users - Usuarios encontrados en DB: {len(users)}")
         
+        for user in users:
+            print(f"🔍 get_users - Usuario raw: {user}")
+            user["_id"] = str(user["_id"])
+            print(f"🔍 get_users - Usuario procesado: {user}")
+        
+        print(f"🔍 get_users - Lista final de usuarios: {users}")
         return users
     except Exception as e:
+        print(f"❌ Error en get_users: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {str(e)}")
 
 @app.post("/api/users", response_model=User)
@@ -336,6 +350,43 @@ async def create_user(user: UserCreate):
         return user_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear usuario: {str(e)}")
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: str, user: UserCreate):
+    """Actualizar un usuario"""
+    try:
+        db = get_db()
+        user_data = user.dict()
+        
+        result = db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": user_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        # Obtener el usuario actualizado
+        updated_user = db.users.find_one({"_id": ObjectId(user_id)})
+        updated_user["_id"] = str(updated_user["_id"])
+        
+        return updated_user
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al actualizar usuario: {str(e)}")
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: str):
+    """Eliminar un usuario"""
+    try:
+        db = get_db()
+        result = db.users.delete_one({"_id": ObjectId(user_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        return {"message": "Usuario eliminado exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar usuario: {str(e)}")
 
 # Ruta de salud
 @app.get("/")
